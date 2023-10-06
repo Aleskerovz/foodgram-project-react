@@ -2,6 +2,7 @@ import base64
 
 from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from djoser.serializers import UserCreateSerializer, UserSerializer
 from rest_framework import serializers
 
@@ -34,10 +35,10 @@ class UserSerializer(UserSerializer):
                   'first_name', 'last_name', 'is_subscribed')
 
     def get_is_subscribed(self, obj):
-        if self.context.get('request').user.is_authenticated:
-            return Subscription.objects.filter(
-                user=self.context['request'].user, author=obj).exists()
-        return False
+        return (
+            self.context.get('request').user.is_authenticated
+            and Subscription.objects.filter(
+                user=self.context['request'].user, author=obj).exists())
 
 
 class UserCreateSerializer(UserCreateSerializer):
@@ -113,12 +114,18 @@ class RecipeReadSerializer(serializers.ModelSerializer):
     is_favorited = serializers.SerializerMethodField()
     is_in_shopping_cart = serializers.SerializerMethodField()
     image = Base64ImageField()
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Recipe
         fields = ('id', 'tags', 'author', 'ingredients',
                   'is_favorited', 'is_in_shopping_cart',
                   'name', 'image', 'text', 'cooking_time')
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
 
     def get_is_favorited(self, obj):
         return (
@@ -150,14 +157,19 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
                   'image', 'name', 'text',
                   'cooking_time', 'author')
 
-    def validate(self, data):
-        tags = data.get('tags')
-        ingredients = data.get('ingredients')
-
-        if not tags and not ingredients:
+    def validate_tags(self, tags):
+        if not tags:
             raise serializers.ValidationError(
-                'Выберите хотя бы один тег или ингредиент.')
+                'Выберите хотя бы один тег.')
+        return tags
 
+    def validate_ingredients(self, ingredients):
+        if not ingredients:
+            raise serializers.ValidationError(
+                'Выберите хотя бы один ингредиент.')
+        return ingredients
+
+    def validate(self, data):
         if self.context['request'].method != 'PATCH':
             if Recipe.objects.filter(
                 name=data['name'], text=data['text']
@@ -167,13 +179,7 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
                     'Измените название или описание.')
         return data
 
-    def create(self, validated_data):
-        tags_data = validated_data.pop('tags')
-        ingredients_data = validated_data.pop('ingredients')
-
-        recipe = Recipe.objects.create(**validated_data)
-        recipe.tags.set(tags_data)
-
+    def create_ingredients(self, recipe, ingredients_data):
         for ingredient_data in ingredients_data:
             ingredient = get_object_or_404(
                 Ingredient, pk=ingredient_data['id'])
@@ -181,14 +187,27 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
                 recipe=recipe, ingredient=ingredient,
                 amount=ingredient_data['amount'])
 
+    @transaction.atomic
+    def create(self, validated_data):
+        tags_data = validated_data.pop('tags')
+        ingredients_data = validated_data.pop('ingredients')
+        recipe = Recipe.objects.create(**validated_data)
+        recipe.tags.set(tags_data)
+        self.create_ingredients(recipe, ingredients_data)
         return recipe
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         instance.name = validated_data.get('name', instance.name)
         instance.text = validated_data.get('text', instance.text)
         instance.cooking_time = validated_data.get(
             'cooking_time', instance.cooking_time)
 
+        if 'image' in validated_data:
+            if instance.image:
+                instance.image.delete()
+
+        instance.image = validated_data['image']
         tags_data = validated_data.get('tags')
         ingredients_data = validated_data.get('ingredients')
 
@@ -197,12 +216,7 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
 
         if ingredients_data is not None:
             RecipeIngredient.objects.filter(recipe=instance).delete()
-            for ingredient_data in ingredients_data:
-                ingredient = get_object_or_404(
-                    Ingredient, pk=ingredient_data['id'])
-                RecipeIngredient.objects.create(
-                    recipe=instance, ingredient=ingredient,
-                    amount=ingredient_data['amount'])
+            self.create_ingredients(instance, ingredients_data)
 
         instance.save()
         return instance
