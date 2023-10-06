@@ -113,8 +113,7 @@ class RecipeReadSerializer(serializers.ModelSerializer):
         source='recipe_ingredient')
     is_favorited = serializers.SerializerMethodField()
     is_in_shopping_cart = serializers.SerializerMethodField()
-    image = Base64ImageField()
-    image_url = serializers.SerializerMethodField()
+    image = Base64ImageField(read_only=True)
 
     class Meta:
         model = Recipe
@@ -122,14 +121,7 @@ class RecipeReadSerializer(serializers.ModelSerializer):
                   'ingredients', 'is_favorited',
                   'is_in_shopping_cart',
                   'name', 'image', 'text',
-                  'cooking_time', 'image_url')
-        extra_kwargs = {
-            'image_url': {'write_only': True}}
-
-    def get_image_url(self, obj):
-        if obj.image:
-            return obj.image.url
-        return None
+                  'cooking_time')
 
     def get_is_favorited(self, obj):
         return (
