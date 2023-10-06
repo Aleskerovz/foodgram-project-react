@@ -116,7 +116,7 @@ class RecipeReadSerializer(serializers.ModelSerializer):
     image = Base64ImageField()
     image_url = serializers.SerializerMethodField(
         'get_image_url',
-        read_only=True)
+        write_only=True)
 
     class Meta:
         model = Recipe
