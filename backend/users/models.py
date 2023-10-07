@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.contrib.auth.hashers import make_password
 from django.db import models
 
 
@@ -39,6 +40,12 @@ class User(AbstractUser):
             models.UniqueConstraint(
                 fields=['email', 'username'],
                 name='unique_email_username')]
+
+    def save(self, *args, **kwargs):
+        if not self.password.startswith((
+                'pbkdf2_sha256$', 'bcrypt', 'argon2')):
+            self.password = make_password(self.password)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.username
