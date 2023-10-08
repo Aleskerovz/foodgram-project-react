@@ -56,7 +56,7 @@ class RecipeAdmin(BaseAdmin):
     empty_value_display = '-пусто-'
 
     def in_favorites(self, obj):
-        return obj.favorite_recipe.count()
+        return obj.shoppingcart_recipe.count()
 
     in_favorites.short_description = 'В избранном'
 
