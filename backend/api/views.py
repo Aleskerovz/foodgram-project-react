@@ -59,8 +59,10 @@ class CustomUserViewSet(UserViewSet):
                 return Response(serializer.data,
                                 status=status.HTTP_201_CREATED)
         if request.method == 'DELETE':
-            if Subscription.objects.filter(author=author, user=user).exists():
-                Subscription.objects.get(author=author).delete()
+            subscription = Subscription.objects.filter(
+                author=author, user=user).first()
+            if subscription:
+                subscription.delete()
                 return Response('Вы успешно отписались от пользователя.',
                                 status=status.HTTP_204_NO_CONTENT)
             return Response({'errors': 'Объект не найден'},
