@@ -197,6 +197,7 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        validated_data['name'] = validated_data['name'].capitalize()
         tags_data = validated_data.pop('tags')
         ingredients_data = validated_data.pop('ingredients')
         recipe = Recipe.objects.create(**validated_data)
@@ -210,6 +211,9 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
         instance.text = validated_data.get('text', instance.text)
         instance.cooking_time = validated_data.get(
             'cooking_time', instance.cooking_time)
+
+        if 'name' in validated_data:
+            validated_data['name'] = validated_data['name'].capitalize()
 
         if 'image' in validated_data:
             if instance.image:
