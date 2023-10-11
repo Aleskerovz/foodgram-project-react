@@ -37,6 +37,12 @@ class Tag(models.Model):
     def __str__(self):
         return self.name[:LENGTH_OF_STR]
 
+    def clean(self):
+        self.name = self.name.strip().lower()
+        self.slug = self.slug.strip().lower()
+        self.color = self.color.strip().lower()
+        return super().clean()
+
 
 class Ingredient(models.Model):
     """Модель ингредиентов для рецептов."""
@@ -60,6 +66,11 @@ class Ingredient(models.Model):
     def __str__(self) -> str:
         return f'{self.name[:LENGTH_OF_STR]} {self.measurement_unit}'
 
+    def clean(self):
+        self.name = self.name.lower()
+        self.measurement_unit = self.measurement_unit.lower()
+        super().clean()
+
 
 class Recipe(models.Model):
     """Модель для рецептов."""
@@ -78,7 +89,8 @@ class Recipe(models.Model):
     image = models.ImageField(
         'Изображение',
         upload_to='recipes/')
-    text = models.TextField('Описание')
+    text = models.TextField(
+        'Описание')
     tags = models.ManyToManyField(
         Tag,
         verbose_name='Теги')
@@ -101,13 +113,13 @@ class Recipe(models.Model):
         verbose_name = 'Рецепт'
         verbose_name_plural = 'Рецепты'
         ordering = ('-pub_date',)
-        constraints = [
-            models.UniqueConstraint(
-                fields=['name', 'author'],
-                name='unique_for_author')]
 
     def __str__(self):
         return self.name[:LENGTH_OF_STR]
+
+    def clean(self):
+        self.name = self.name.capitalize()
+        return super().clean()
 
 
 class RecipeIngredient(models.Model):

@@ -3,6 +3,7 @@ import base64
 from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.db.models import F
 from djoser.serializers import UserCreateSerializer, UserSerializer
 from rest_framework import serializers
 
@@ -35,10 +36,10 @@ class UserSerializer(UserSerializer):
                   'first_name', 'last_name', 'is_subscribed')
 
     def get_is_subscribed(self, obj):
-        return (
-            self.context.get('request').user.is_authenticated
-            and Subscription.objects.filter(
-                user=self.context['request'].user, author=obj).exists())
+        request = self.context.get('request')
+        return (request and request.user.is_authenticated
+                and Subscription.objects.filter(
+                    user=request.user, author=obj).exists())
 
 
 class UserCreateSerializer(UserCreateSerializer):
@@ -171,22 +172,28 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
         return ingredients
 
     def validate(self, data):
-        if self.context['request'].method != 'PATCH':
-            if Recipe.objects.filter(
-                name=data['name'], text=data['text']
-            ).exists():
-                raise serializers.ValidationError(
-                    'Такой рецепт уже существует. '
-                    'Измените название или описание.')
+        text = data.get('text')
+        if self.instance and text == self.instance.text:
+            return data
+
+        if Recipe.objects.filter(text=text).exists():
+            raise serializers.ValidationError(
+                'Такой рецепт уже существует. Измените описание.')
         return data
 
     def create_ingredients(self, recipe, ingredients_data):
         for ingredient_data in ingredients_data:
-            ingredient = get_object_or_404(
-                Ingredient, pk=ingredient_data['id'])
-            RecipeIngredient.objects.create(
-                recipe=recipe, ingredient=ingredient,
-                amount=ingredient_data['amount'])
+            ingredient_id = ingredient_data['id']
+            amount = ingredient_data['amount']
+            existing_ingredient = RecipeIngredient.objects.filter(
+                recipe=recipe, ingredient_id=ingredient_id).first()
+            if existing_ingredient:
+                existing_ingredient.amount = F('amount') + amount
+                existing_ingredient.save()
+            else:
+                ingredient = get_object_or_404(Ingredient, pk=ingredient_id)
+                RecipeIngredient.objects.create(
+                    recipe=recipe, ingredient=ingredient, amount=amount)
 
     @transaction.atomic
     def create(self, validated_data):
@@ -207,19 +214,30 @@ class RecipeCreateSerializer(serializers.ModelSerializer):
         if 'image' in validated_data:
             if instance.image:
                 instance.image.delete()
-
-        instance.image = validated_data['image']
+            instance.image = validated_data['image']
         tags_data = validated_data.get('tags')
         ingredients_data = validated_data.get('ingredients')
 
         if tags_data is not None:
             instance.tags.set(tags_data)
 
-        if ingredients_data is not None:
+        if 'ingredients' in validated_data:
+            ingredients_data = validated_data.pop('ingredients')
             RecipeIngredient.objects.filter(recipe=instance).delete()
-            self.create_ingredients(instance, ingredients_data)
-
-        instance.save()
+            for ingredient_data in ingredients_data:
+                ingredient_id = ingredient_data['id']
+                amount = ingredient_data['amount']
+                existing_ingredient = RecipeIngredient.objects.filter(
+                    recipe=instance, ingredient_id=ingredient_id).first()
+                if existing_ingredient:
+                    existing_ingredient.amount = F('amount') + amount
+                    existing_ingredient.save()
+                else:
+                    ingredient = get_object_or_404(
+                        Ingredient, pk=ingredient_id)
+                    RecipeIngredient.objects.create(
+                        recipe=instance, ingredient=ingredient, amount=amount)
+        instance = super().update(instance, validated_data)
         return instance
 
     def to_representation(self, instance):

@@ -1,6 +1,6 @@
+from django import forms
 from django.contrib import admin
-from django.forms import ValidationError
-from django.forms import BaseInlineFormSet
+from django.forms import ValidationError, BaseInlineFormSet
 
 from .models import (Favorites, Ingredient, Recipe, RecipeIngredient,
                      ShoppingCart, Tag)
@@ -8,6 +8,21 @@ from .models import (Favorites, Ingredient, Recipe, RecipeIngredient,
 
 class BaseAdmin(admin.ModelAdmin):
     empty_value_display = '-пусто-'
+
+
+class RecipeForm(forms.ModelForm):
+    class Meta:
+        model = Recipe
+        fields = '__all__'
+
+    def clean_text(self):
+        text = self.cleaned_data.get('text')
+        if self.instance and self.instance.text == text:
+            return text
+        if Recipe.objects.filter(text=text).exists():
+            raise ValidationError(
+                'Такой рецепт уже существует. Измените описание.')
+        return text
 
 
 class IngredientInlineFormSet(BaseInlineFormSet):
@@ -53,6 +68,7 @@ class RecipeAdmin(BaseAdmin):
     list_filter = ('name', 'author__username', 'tags__name')
     search_fields = ('name', 'author__username', 'tags__name')
     inlines = (IngredientInline,)
+    form = RecipeForm
     empty_value_display = '-пусто-'
 
     def in_favorites(self, obj):

@@ -15,7 +15,7 @@ from .permissions import IsOwnerOrAdminOrReadOnly
 from .serializers import (IngredientSerializer, RecipeCreateSerializer,
                           RecipeReadSerializer, RecipeSerializer,
                           SubscriptionsListSerializer, SubscriptionsSerializer,
-                          TagSerializer)
+                          TagSerializer, UserSerializer)
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
@@ -42,6 +42,14 @@ class CustomUserViewSet(UserViewSet):
     """Вьюсет для работы с пользователями."""
 
     queryset = User.objects.all()
+
+    @action(methods=['get'],
+            detail=False,
+            permission_classes=(permissions.IsAuthenticated,))
+    def me(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data,
+                        status=status.HTTP_200_OK)
 
     @action(methods=['post', 'delete'],
             detail=True,
